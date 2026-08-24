@@ -1,0 +1,43 @@
+# =============================================================================
+# Arquivos que nao devem entrar no controle de versao.
+# =============================================================================
+
+# --- Credenciais e configuracao local -----------------------------------------
+# Nenhuma credencial deve ser versionada. As entradas abaixo existem como rede
+# de protecao contra inclusao acidental.
+.env
+*.pem
+*.key
+credentials
+kubeconfig
+.aws/
+
+# --- Artefatos de compilacao do LaTeX -----------------------------------------
+# O PDF do artigo e versionado, pois e entregavel. Os arquivos intermediarios
+# gerados a cada compilacao, nao.
+artigo/*.aux
+artigo/*.log
+artigo/*.out
+artigo/*.toc
+artigo/*.bbl
+artigo/*.blg
+artigo/*.synctex.gz
+artigo/*.fls
+artigo/*.fdb_latexmk
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- Saidas temporarias de execucao -------------------------------------------
+# Os CSV finais em dados/ sao versionados por sustentarem a analise do artigo.
+# Coletas descartadas de ensaios preliminares podem usar o sufixo .tmp.csv.
+*.tmp.csv
+*.tmp
+
+# --- Sistema operacional ------------------------------------------------------
+.DS_Store
+Thumbs.db
+*~
