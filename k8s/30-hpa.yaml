@@ -1,0 +1,108 @@
+# =============================================================================
+# HorizontalPodAutoscaler.
+#
+# Objeto central deste trabalho. Ajusta continuamente o numero de replicas do
+# Deployment em funcao da utilizacao de CPU observada.
+#
+# FUNCIONAMENTO
+# O controlador consulta o Metrics Server em intervalos regulares, com padrao
+# de 15 segundos. A cada ciclo calcula a utilizacao media das replicas como a
+# razao entre o consumo observado e o valor declarado em requests.cpu do
+# container, e aplica a formula:
+#
+#     replicas_desejadas = ceil( replicas_atuais * ( utilizacao_atual / alvo ) )
+#
+# O Metrics Server e pre-requisito. Sem ele, a coluna TARGETS permanece em
+# <unknown> e nenhum escalamento ocorre. No Minikube ele e habilitado por
+# addon; no Amazon EKS precisa ser instalado por manifesto. Essa diferenca
+# entre os ambientes e discutida no artigo.
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-hpa
+  namespace: hpa-demo
+  labels:
+    app: web
+spec:
+  # Objeto controlado. O HPA passa a ser a autoridade sobre o campo replicas
+  # do Deployment referenciado.
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+
+  # -------------------------------------------------------------------------
+  # Limites de escala.
+  #
+  # O minimo de 1 permite observar o crescimento desde o repouso.
+  #
+  # O maximo de 10 decorre do dimensionamento dos dois ambientes. Com
+  # requests.cpu de 100m por replica, dez replicas reservam 1000m, valor que
+  # cabe tanto no cluster local quanto no no da nuvem. Fixar um teto alcancavel
+  # nos dois ambientes faz com que a comparacao meca o tempo de reacao do
+  # controlador, e nao a capacidade instalada.
+  # -------------------------------------------------------------------------
+  minReplicas: 1
+  maxReplicas: 10
+
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          # Utilization compara o consumo com requests.cpu. A alternativa
+          # AverageValue usaria um valor absoluto e tornaria o alvo dependente
+          # do dimensionamento do container.
+          type: Utilization
+          # Alvo de 50 por cento sobre requests.cpu de 100m corresponde a 50m
+          # por replica. Uma replica sob carga tende a consumir bem mais que
+          # isso, o que produz escalamento rapido e claramente observavel.
+          averageUtilization: 50
+
+  # -------------------------------------------------------------------------
+  # Politicas de comportamento.
+  #
+  # Este bloco e opcional e existe na versao autoscaling/v2. Ele e declarado
+  # explicitamente aqui por duas razoes. A primeira e tornar visiveis, no
+  # proprio manifesto, parametros que de outro modo ficariam implicitos e
+  # dificultariam a interpretacao das medidas. A segunda e garantir que os dois
+  # ambientes usem exatamente a mesma politica, uma vez que padroes podem
+  # variar entre versoes do Kubernetes, e os clusters do trabalho executam
+  # versoes distintas.
+  # -------------------------------------------------------------------------
+  behavior:
+    scaleUp:
+      # Janela considerada para decidir aumento. Valor baixo favorece reacao
+      # rapida, que e o comportamento desejado no experimento.
+      stabilizationWindowSeconds: 0
+      policies:
+        # Permite dobrar a quantidade de replicas a cada 15 segundos.
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        # Ou adicionar quatro replicas a cada 15 segundos.
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      # Com Max, prevalece a politica que autorizar o maior aumento.
+      selectPolicy: Max
+
+    scaleDown:
+      # Janela de estabilizacao para reducao. O valor padrao do Kubernetes e
+      # 300 segundos, mantido aqui deliberadamente.
+      #
+      # A assimetria entre subir e descer nao e um defeito, e sim uma decisao
+      # de projeto do controlador: subir tarde degrada o servico, ao passo que
+      # descer cedo provoca oscilacao de replicas diante de variacoes
+      # transitorias de carga.
+      #
+      # Consequencia pratica para o experimento: apos o encerramento da carga,
+      # a reducao levara cerca de cinco minutos para comecar. Esse intervalo e
+      # esperado e sera medido, nao corrigido.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+      selectPolicy: Max
