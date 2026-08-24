@@ -1,0 +1,88 @@
+# =============================================================================
+# Gerador de carga.
+#
+# Executa dentro do proprio cluster, e nao a partir da estacao de trabalho.
+# Essa escolha tem tres motivos.
+#
+# Primeiro, mantem o experimento identico nos dois ambientes. Um gerador
+# externo ao cluster gerenciado atravessaria a internet publica, adicionando
+# latencia e variabilidade de rede que nao existem no cluster local, o que
+# contaminaria a comparacao.
+#
+# Segundo, evita custo. Trafego de entrada a partir da internet exigiria expor
+# o servico por um balanceador, cobrado por permanencia.
+#
+# Terceiro, elimina a largura de banda da estacao como possivel gargalo. A
+# carga precisa saturar a CPU das replicas, e nao o enlace de rede.
+#
+# A intensidade e controlada por dois parametros: o numero de processos
+# paralelos declarado em PARALELISMO e o custo de CPU de cada requisicao,
+# definido pelo endpoint /work em milissegundos.
+# =============================================================================
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gerador-carga
+  namespace: hpa-demo
+  labels:
+    app: gerador-carga
+spec:
+  # O gerador nao deve ser reiniciado automaticamente ao terminar. O controle
+  # do inicio e do fim da carga pertence ao operador do experimento.
+  restartPolicy: Never
+
+  containers:
+    - name: gerador
+      # Imagem minima com shell e cliente HTTP. Escolhida pelo tamanho
+      # reduzido, o que acelera a partida do gerador e reduz o intervalo entre
+      # a decisao de iniciar a carga e o inicio efetivo dela.
+      image: busybox:1.36
+
+      # -----------------------------------------------------------------------
+      # Recursos do proprio gerador.
+      #
+      # Precisam ser declarados para que o gerador nao concorra livremente com
+      # as replicas pelo processador do no. Sem limite, o laco de requisicoes
+      # poderia consumir CPU suficiente para reduzir a capacidade disponivel
+      # para a aplicacao e distorcer a metrica observada pelo HPA.
+      #
+      # Note-se que o gerador nao possui o rotulo app=web, portanto seu consumo
+      # nao entra no calculo do autoescalador.
+      # -----------------------------------------------------------------------
+      resources:
+        requests:
+          cpu: 50m
+          memory: 32Mi
+        limits:
+          cpu: 300m
+          memory: 64Mi
+
+      env:
+        # Numero de lacos de requisicao simultaneos. Ajustar este valor e a
+        # forma mais direta de variar a intensidade da carga.
+        - name: PARALELISMO
+          value: "12"
+        # Endereco do Service. A resolucao ocorre pelo DNS interno do cluster.
+        - name: ALVO
+          value: "http://web-svc.hpa-demo.svc.cluster.local/work?ms=50"
+
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          echo "iniciando carga com paralelismo=${PARALELISMO} contra ${ALVO}"
+          # Cada iteracao do laco externo cria um processo em segundo plano que
+          # emite requisicoes continuamente. O parametro -q silencia a saida e
+          # -O- descarta o corpo da resposta, de modo que o gerador gaste o
+          # minimo de CPU e o custo se concentre no servidor.
+          i=0
+          while [ "$i" -lt "${PARALELISMO}" ]; do
+            (
+              while true; do
+                wget -q -O- "${ALVO}" >/dev/null 2>&1 || true
+              done
+            ) &
+            i=$((i + 1))
+          done
+          # Mantem o Pod ativo enquanto os processos filhos executam. O
+          # encerramento ocorre quando o operador remove o Pod.
+          wait
