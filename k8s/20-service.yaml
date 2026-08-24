@@ -1,0 +1,47 @@
+# =============================================================================
+# Service do servidor web.
+#
+# Fornece um endereco estavel sobre um conjunto instavel de Pods. Durante o
+# autoescalamento os Pods sao criados e removidos continuamente, cada um com
+# nome e endereco IP proprios. O gerador de carga nao poderia acompanhar essa
+# variacao se apontasse para um Pod especifico.
+#
+# A associacao entre Service e Pods ocorre por rotulo, e nao por nome, de modo
+# que replicas criadas pelo HPA passam a receber trafego automaticamente assim
+# que ficam prontas.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: hpa-demo
+  labels:
+    app: web
+spec:
+  # -------------------------------------------------------------------------
+  # ClusterIP restringe o alcance ao interior do cluster.
+  #
+  # A escolha e deliberada e vale para os dois ambientes do trabalho. O gerador
+  # de carga executa dentro do proprio cluster, o que mantem o experimento
+  # identico no Minikube e no Amazon EKS.
+  #
+  # Um Service do tipo LoadBalancer no cluster gerenciado provisionaria um
+  # balanceador na conta do provedor, cobrado por permanencia, e introduziria
+  # latencia de rede externa na comparacao. Nenhum dos dois efeitos e desejado
+  # aqui. Para evidenciar acesso externo, usa-se kubectl port-forward, que nao
+  # cria recurso cobrado.
+  # -------------------------------------------------------------------------
+  type: ClusterIP
+
+  selector:
+    app: web
+
+  ports:
+    - name: http
+      protocol: TCP
+      # Porta exposta pelo Service dentro do cluster.
+      port: 80
+      # Porta em que a aplicacao escuta dentro do container. O nome http
+      # referencia a porta declarada no Deployment, evitando duplicar o valor
+      # numerico em dois arquivos.
+      targetPort: http

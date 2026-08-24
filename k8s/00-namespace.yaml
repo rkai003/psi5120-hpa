@@ -1,0 +1,17 @@
+# =============================================================================
+# Namespace da atividade.
+#
+# Um namespace e um escopo logico dentro do cluster. Isolar os objetos deste
+# trabalho em um namespace proprio evita colisao de nomes com cargas
+# existentes e, principalmente, torna a limpeza confiavel: remover o namespace
+# remove todos os objetos nele contidos.
+#
+# Isso importa no cluster gerenciado, onde recursos esquecidos geram custo.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hpa-demo
+  labels:
+    disciplina: psi5120
+    atividade: pratica-1

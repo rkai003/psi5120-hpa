@@ -1,0 +1,151 @@
+# =============================================================================
+# Deployment do servidor web.
+#
+# Declara o estado desejado da aplicacao. O Deployment cria um ReplicaSet, e o
+# ReplicaSet mantem o numero de Pods indicado. Durante o experimento, quem
+# altera esse numero nao e o operador, e sim o HorizontalPodAutoscaler
+# declarado em 30-hpa.yaml.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: hpa-demo
+  labels:
+    app: web
+spec:
+  # -------------------------------------------------------------------------
+  # Numero inicial de replicas.
+  #
+  # O valor 1 e proposital. O experimento consiste em observar o crescimento a
+  # partir do repouso, de modo que iniciar com uma unica replica torna a
+  # reacao do autoescalador visivel desde o primeiro instante.
+  #
+  # Apos o HPA assumir o controle, este campo deixa de ser respeitado em
+  # reconciliacoes subsequentes, pois o autoescalador passa a ser a autoridade
+  # sobre a contagem de replicas.
+  # -------------------------------------------------------------------------
+  replicas: 1
+
+  # O seletor define quais Pods pertencem a este Deployment. A associacao e
+  # feita por rotulo, e nao por nome, o que permite que Pods sejam substituidos
+  # livremente sem quebrar o vinculo.
+  selector:
+    matchLabels:
+      app: web
+
+  # Estrategia de atualizacao. Mantida no padrao, relevante apenas se a imagem
+  # for alterada durante os testes.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  template:
+    metadata:
+      labels:
+        # Este rotulo e o ponto de acoplamento de todo o restante. O ReplicaSet
+        # conta Pods por ele e o Service roteia trafego por ele.
+        app: web
+    spec:
+      # Tempo concedido para encerramento gracioso. Durante a reducao de
+      # replicas o kubelet envia SIGTERM e aguarda este intervalo antes de
+      # forcar o encerramento.
+      terminationGracePeriodSeconds: 15
+
+      containers:
+        - name: web
+          # -----------------------------------------------------------------
+          # Imagem publicada em registro publico.
+          #
+          # A tag e fixada em v1 em vez de latest. Uma tag mutavel permitiria
+          # que os dois clusters executassem conteudos diferentes sem aviso,
+          # o que invalidaria a comparacao entre os ambientes.
+          # -----------------------------------------------------------------
+          image: rkai03/psi5120-hpa:v1
+
+          # IfNotPresent evita download desnecessario quando a imagem ja existe
+          # no no. Em Minikube isso tambem permite operar com imagem carregada
+          # localmente, caso se opte por esse caminho.
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8080
+
+          env:
+            # Custo de CPU de cada requisicao ao endpoint /work, em
+            # milissegundos. Definido aqui, e nao na imagem, para permitir
+            # ajuste da intensidade da carga sem reconstruir o artefato.
+            - name: TRABALHO_PADRAO_MS
+              value: "50"
+
+            # Downward API. Injeta o nome do Pod como variavel de ambiente, de
+            # modo que a resposta HTTP identifique qual replica a atendeu.
+            # Durante o teste de carga isso evidencia que o trafego passou a
+            # ser distribuido entre as novas replicas criadas pelo HPA.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+          # -----------------------------------------------------------------
+          # Requisicoes e limites de recursos.
+          #
+          # ESTE BLOCO E PRE-REQUISITO DO EXPERIMENTO.
+          #
+          # O HorizontalPodAutoscaler baseado em CPU calcula a utilizacao como
+          # a razao entre o consumo observado e o valor declarado em
+          # requests.cpu. Sem requests.cpu definido nao existe denominador, e
+          # o autoescalador nao consegue computar a metrica. O sintoma tipico e
+          # a coluna TARGETS exibir <unknown> indefinidamente.
+          #
+          # O valor de 100m foi escolhido pelo dimensionamento do experimento.
+          # Com dez replicas no maximo, a reserva total chega a 1000m, o que
+          # cabe tanto no cluster local quanto no no da nuvem, permitindo que
+          # os dois ambientes atinjam o teto de replicas. Assim a comparacao
+          # mede tempo de reacao, e nao capacidade disponivel.
+          #
+          # O limite de 500m impede que uma unica replica monopolize o
+          # processador do no e mascare a necessidade de escalar.
+          # -----------------------------------------------------------------
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+
+          # -----------------------------------------------------------------
+          # Probes de saude.
+          #
+          # A readiness probe determina se o Pod recebe trafego do Service. Isso
+          # importa no autoescalamento: uma replica recem-criada so passa a
+          # dividir a carga apos ser considerada pronta, e esse intervalo faz
+          # parte do tempo de reacao medido no experimento.
+          #
+          # Ambas apontam para /health, que responde imediatamente e nao
+          # consome CPU, de modo a nao interferir na metrica observada.
+          # -----------------------------------------------------------------
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          # A liveness probe reinicia o container que deixou de responder. O
+          # limiar e mais tolerante que o de readiness para evitar reinicio de
+          # replicas saudaveis porem ocupadas durante o pico de carga.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
