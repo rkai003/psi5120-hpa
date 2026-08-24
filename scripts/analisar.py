@@ -132,16 +132,26 @@ def calcular_metricas(serie: list, rotulo: str) -> dict:
 
     # Primeira replica adicional apos o inicio da carga.
     if t_ini is not None and base is not None:
+        t_criacao = None
         for p in serie:
             if p["t"] >= t_ini and p["atuais"] is not None and p["atuais"] > base:
                 m["t_primeira_replica"] = p["t"] - t_ini
+                t_criacao = p["t"]
                 break
 
         # Primeira replica adicional efetivamente pronta para receber trafego.
-        for p in serie:
-            if p["t"] >= t_ini and p["prontas"] is not None and p["prontas"] > base:
-                m["t_primeira_pronta"] = p["t"] - t_ini
-                break
+        #
+        # A busca so comeca a partir do instante de criacao, e nao do inicio da
+        # carga. Sem essa restricao, uma oscilacao transitoria no campo
+        # readyReplicas antes do escalamento, causada por exemplo por uma
+        # readiness probe que falhou momentaneamente sob carga e voltou a
+        # passar, seria interpretada como replica nova e produziria um tempo de
+        # prontidao menor que o tempo de criacao, o que e impossivel.
+        if t_criacao is not None:
+            for p in serie:
+                if p["t"] >= t_criacao and p["prontas"] is not None and p["prontas"] > base:
+                    m["t_primeira_pronta"] = p["t"] - t_ini
+                    break
 
     # Pico de replicas e instante em que foi atingido.
     pico, t_pico = None, None
