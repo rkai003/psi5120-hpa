@@ -39,6 +39,7 @@ SAIDA
 import csv
 import os
 import sys
+from datetime import datetime
 from typing import Optional
 
 
@@ -81,9 +82,73 @@ def ler_serie(caminho: str) -> list:
     return [p for p in serie if p["t"] is not None]
 
 
+def _instante(p: dict) -> Optional[datetime]:
+    """Converte o campo de timestamp em objeto de data e hora."""
+    try:
+        return datetime.strptime(p["ts"], "%Y-%m-%dT%H:%M:%SZ")
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+def emendar(segmentos: list) -> list:
+    """
+    Une varios segmentos de coleta em uma unica serie temporal continua.
+
+    O experimento pode ser conduzido em coletas separadas, tipicamente uma para
+    a fase de crescimento e outra para a fase de reducao. Cada arquivo possui
+    base de tempo propria iniciada em zero, de modo que simplesmente concatenar
+    os registros produziria uma serie sem sentido fisico.
+
+    A emenda usa o campo de timestamp absoluto para reposicionar cada segmento
+    em relacao ao inicio do primeiro. O intervalo entre o fim de um segmento e o
+    inicio do seguinte e preservado como lacuna, e nao interpolado, uma vez que
+    nesse periodo nao houve observacao. Um marcador de descontinuidade e
+    inserido para que os graficos interrompam a linha em vez de sugerir
+    medicao inexistente.
+    """
+    validos = [s for s in segmentos if s and _instante(s[0]) is not None]
+    if not validos:
+        # Sem timestamp utilizavel, resta concatenar deslocando pelo tempo
+        # relativo, o que ignora a lacuna entre coletas.
+        saida, deslocamento = [], 0.0
+        for s in segmentos:
+            for p in s:
+                q = dict(p)
+                q["t"] = p["t"] + deslocamento
+                saida.append(q)
+            if s:
+                deslocamento += s[-1]["t"] + 5
+        return saida
+
+    validos.sort(key=lambda s: _instante(s[0]))
+    origem = _instante(validos[0][0])
+
+    saida = []
+    for i, s in enumerate(validos):
+        if i > 0:
+            # Marcador de descontinuidade entre coletas distintas.
+            saida.append({"t": None, "ts": "", "desejadas": None, "atuais": None,
+                          "prontas": None, "cpu": None, "alvo": None,
+                          "pendentes": None, "lacuna": True})
+        for p in s:
+            inst = _instante(p)
+            if inst is None:
+                continue
+            q = dict(p)
+            q["t"] = (inst - origem).total_seconds()
+            saida.append(q)
+
+    return saida
+
+
 # ---------------------------------------------------------------------------
 # Deteccao dos eventos de interesse
 # ---------------------------------------------------------------------------
+def _reais(serie: list) -> list:
+    """Remove marcadores de descontinuidade antes dos calculos."""
+    return [p for p in serie if p.get("t") is not None]
+
+
 def detectar_inicio_carga(serie: list) -> Optional[float]:
     """
     Primeiro instante em que a utilizacao de CPU ultrapassa o alvo do HPA.
@@ -113,6 +178,7 @@ def detectar_fim_carga(serie: list) -> Optional[float]:
 def calcular_metricas(serie: list, rotulo: str) -> dict:
     """Extrai as grandezas usadas na comparacao entre ambientes."""
     m = {"ambiente": rotulo}
+    serie = _reais(serie)
 
     if not serie:
         return m
@@ -245,8 +311,9 @@ def gerar_graficos(series: dict, destino: str = "artigo/figuras") -> None:
     # -- Grafico 1: evolucao do numero de replicas -------------------------
     fig, ax = plt.subplots(figsize=(7, 3.6))
     for rotulo, serie in series.items():
-        t = [p["t"] for p in serie if p["atuais"] is not None]
-        r = [p["atuais"] for p in serie if p["atuais"] is not None]
+        # Marcadores de lacuna entram como None e interrompem a linha.
+        t = [p["t"] for p in serie if p["atuais"] is not None or p.get("lacuna")]
+        r = [p["atuais"] for p in serie if p["atuais"] is not None or p.get("lacuna")]
         ax.plot(t, r, label=rotulo, linewidth=1.6)
     ax.set_xlabel("Tempo desde o inicio da coleta (s)")
     ax.set_ylabel("Replicas")
@@ -260,11 +327,11 @@ def gerar_graficos(series: dict, destino: str = "artigo/figuras") -> None:
     # -- Grafico 2: utilizacao de CPU --------------------------------------
     fig, ax = plt.subplots(figsize=(7, 3.6))
     for rotulo, serie in series.items():
-        t = [p["t"] for p in serie if p["cpu"] is not None]
-        c = [p["cpu"] for p in serie if p["cpu"] is not None]
+        t = [p["t"] for p in serie if p["cpu"] is not None or p.get("lacuna")]
+        c = [p["cpu"] for p in serie if p["cpu"] is not None or p.get("lacuna")]
         ax.plot(t, c, label=rotulo, linewidth=1.4)
     # Linha do alvo configurado, para leitura direta do gatilho de escala.
-    alvos = [p["alvo"] for s in series.values() for p in s if p["alvo"] is not None]
+    alvos = [p["alvo"] for s in series.values() for p in s if p.get("alvo") is not None]
     if alvos:
         ax.axhline(alvos[0], linestyle="--", linewidth=1.0,
                    label=f"Alvo ({int(alvos[0])}%)")
@@ -285,19 +352,34 @@ def main() -> None:
         print(__doc__)
         sys.exit(1)
 
-    series, metricas = {}, []
-
+    # -----------------------------------------------------------------------
+    # Agrupamento por ambiente.
+    #
+    # Coletas de um mesmo ambiente podem estar divididas em arquivos distintos,
+    # tipicamente um para a fase de crescimento e outro para a fase de reducao.
+    # A convencao adotada e que o sufixo _reducao identifica a continuacao de um
+    # mesmo experimento. Arquivos que compartilham o nome base sao emendados em
+    # uma unica serie usando os instantes absolutos de coleta.
+    # -----------------------------------------------------------------------
+    grupos = {}
     for caminho in sys.argv[1:]:
         if not os.path.exists(caminho):
             print(f"arquivo nao encontrado: {caminho}")
             continue
-        # O rotulo do ambiente vem do nome do arquivo, por exemplo
-        # dados/minikube.csv resulta em "minikube".
-        rotulo = os.path.splitext(os.path.basename(caminho))[0]
+        nome = os.path.splitext(os.path.basename(caminho))[0]
+        base = nome.replace("_reducao", "").replace("_subida", "")
         serie = ler_serie(caminho)
+        grupos.setdefault(base, []).append(serie)
+        print(f"lido {caminho}: {len(serie)} amostras")
+
+    series, metricas = {}, []
+    for rotulo, segmentos in grupos.items():
+        serie = emendar(segmentos) if len(segmentos) > 1 else segmentos[0]
         series[rotulo] = serie
         metricas.append(calcular_metricas(serie, rotulo))
-        print(f"lido {caminho}: {len(serie)} amostras")
+        if len(segmentos) > 1:
+            uteis = len(_reais(serie))
+            print(f"  {rotulo}: {len(segmentos)} coletas emendadas, {uteis} amostras")
 
     if metricas:
         imprimir_metricas(metricas)

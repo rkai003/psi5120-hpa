@@ -257,11 +257,16 @@ aws eks describe-cluster --region us-east-1 --name psi5120-tp1-eks \
   --query 'cluster.status' --output text
 ```
 
-<!-- PREENCHER: tempo até ACTIVE -->
+O cluster atingiu o estado `ACTIVE` após aproximadamente 12 minutos. Esse
+intervalo corresponde ao provisionamento do plano de controle pelo provedor, que
+distribui os componentes entre as três zonas de disponibilidade da VPC. Cabe
+registrar que a cobrança do plano de controle inicia com a criação do cluster e
+independe da existência de carga implantada.
 
 ### 2.3 Node group
 
-<!-- PREENCHER: comandos e saídas -->
+Criado pelo Console, com a role dos nós, as três sub-redes e acesso SSH
+desabilitado.
 
 Tipo de instância adotado: `c7i-flex.large`, com 2 vCPU e 4 GiB.
 
@@ -272,10 +277,38 @@ precedente resultaram em falha de provisionamento com a mensagem
 Free Tier`. O tipo adotado possui capacidade equivalente, de modo que a diferença
 entre os dois é de elegibilidade comercial e não técnica.
 
+O dimensionamento foi fixado em 1 nó, com mínimo e máximo iguais ao desejado. A
+decisão é deliberada, pois o experimento mede o autoescalamento de Pods e não o
+de nós. Um grupo de nós elástico impediria distinguir o efeito de um mecanismo do
+outro.
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name psi5120-tp1-eks
+kubectl get nodes -o wide
+```
+
+Resultado:
+
+```
+NAME                              STATUS  VERSION              INTERNAL-IP       EXTERNAL-IP
+ip-192-168-198-177.ec2.internal   Ready   v1.36.2-eks-b3f9404  192.168.198.177   3.94.198.119
+
+OS-IMAGE                       KERNEL-VERSION                    CONTAINER-RUNTIME
+Amazon Linux 2023.12.20260817  6.18.41-94.142.amzn2023.x86_64    containerd://2.2.5+unknown
+```
+
+Três diferenças em relação ao ambiente local merecem registro. O runtime de
+contêineres é `containerd` acionado diretamente, sem o daemon Docker como
+intermediário. O nó possui núcleo próprio, por ser uma instância EC2, ao passo
+que o nó do Minikube é um contêiner que compartilha o núcleo do hospedeiro. E o
+campo `EXTERNAL-IP` apresenta endereço atribuído, uma vez que existe provedor de
+nuvem, ao contrário do ambiente local.
+
 ### 2.4 Metrics Server
 
 Ao contrário do Minikube, o Amazon EKS não fornece o Metrics Server como
-componente habilitável por comando único. A instalação é feita por manifesto.
+componente habilitável por comando único. A instalação é feita por manifesto,
+cabendo ao operador escolher a versão e mantê-la.
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
@@ -283,7 +316,16 @@ kubectl -n kube-system get deployment metrics-server
 kubectl top nodes
 ```
 
-<!-- PREENCHER: saídas -->
+Resultado:
+
+```
+NAME                              CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+ip-192-168-198-177.ec2.internal   15m          0%       472Mi           15%
+```
+
+O consumo em repouso, de 15 milicores e 472 MiB, corresponde aos componentes do
+sistema e estabelece a linha de base de ocupação do nó antes da implantação da
+aplicação.
 
 ### 2.5 Aplicação dos manifestos
 
@@ -293,20 +335,110 @@ Os mesmos arquivos da Implantação A, sem alteração.
 kubectl apply -f k8s/00-namespace.yaml
 kubectl apply -f k8s/10-deployment.yaml
 kubectl apply -f k8s/20-service.yaml
-kubectl apply -f k8s/30-hpa.yaml
+kubectl get all -n hpa-demo
 ```
 
-<!-- PREENCHER: saídas -->
+O Pod inicial atingiu `1/1 Running` em aproximadamente 18 segundos, contra 21
+segundos no ambiente local. O resultado é digno de nota porque, neste ambiente, a
+imagem foi obtida do registro público pela rede, ao passo que no ambiente local
+já se encontrava em disco. A diferença sugere que o ganho na criação do contêiner
+compensou o tempo de transferência.
+
+```bash
+kubectl apply -f k8s/30-hpa.yaml
+kubectl get hpa -n hpa-demo
+```
+
+Sequência observada:
+
+```
+web-hpa   Deployment/web   cpu: <unknown>/50%   1   10   0    2s
+web-hpa   Deployment/web   cpu: 1%/50%          1   10   1    30s
+```
+
+O estado `<unknown>` persistiu por aproximadamente 30 segundos, contra 26
+segundos no ambiente local. Os valores são próximos, o que era esperado, uma vez
+que ambos dependem do primeiro ciclo de coleta do Metrics Server.
 
 ### 2.6 Teste de carga
 
-Procedimento idêntico ao da Implantação A.
+Procedimento idêntico ao da Implantação A, com coleta iniciada trinta segundos
+antes da aplicação do gerador.
 
-<!-- PREENCHER: saídas -->
+Sessão 1:
+
+```bash
+./scripts/coleta_metricas.sh dados/eks.csv 600 5
+```
+
+Sessão 2:
+
+```bash
+kubectl apply -f k8s/40-gerador-carga.yaml
+```
+
+Estado ao final da fase de subida:
+
+```
+t= 594s  desejadas=10  prontas=10  cpu=174  % alvo=50% pendentes=0
+```
+
+A coluna de Pods pendentes permaneceu em zero durante toda a execução, o que
+confirma que a capacidade do nó foi suficiente para acomodar as dez réplicas e
+que as medidas de tempo refletem o comportamento do controlador.
+
+A fase de redução foi registrada em coleta separada, iniciada com o sistema
+estável no pico.
+
+```bash
+./scripts/coleta_metricas.sh dados/eks_reducao.csv 600 5
+kubectl delete pod gerador-carga -n hpa-demo
+```
 
 ### 2.7 Resultados
 
-<!-- PREENCHER: tabela de métricas -->
+| Grandeza | Valor |
+|---|---|
+| Réplicas iniciais | 1 |
+| Até a primeira réplica adicional | 14 s |
+| Até o pico de réplicas | 35 s |
+| Réplicas no pico | 10 |
+| Pico de utilização de CPU | 500 % |
+| Até iniciar a redução | 303 s |
+| Máximo de Pods pendentes | 0 |
+
+---
+
+## 2A. Comparação entre as duas implantações
+
+| Grandeza | Minikube | Amazon EKS |
+|---|---|---|
+| Até a primeira réplica adicional | 16 s | 14 s |
+| Até o pico de dez réplicas | 74 s | 35 s |
+| Pico de utilização na subida | 469 % | 500 % |
+| Até iniciar a redução | 303 s | 303 s |
+| Máximo de Pods pendentes | 0 | 0 |
+
+A latência de detecção é praticamente equivalente, o que era esperado por
+depender do mesmo ciclo de reconciliação de quinze segundos. A diferença
+expressiva está no tempo até o teto de réplicas, com razão próxima de dois em
+favor do ambiente gerenciado. Como as políticas foram declaradas de forma
+idêntica nos manifestos, a divergência não decorre da decisão do controlador, e
+sim da velocidade com que cada ambiente materializa réplicas.
+
+O intervalo até o início da redução foi de 303 segundos nos dois ambientes,
+contra os 300 segundos declarados na janela de estabilização. A concordância
+valida a instrumentação, uma vez que um parâmetro de valor conhecido foi medido
+de forma independente em dois ambientes distintos.
+
+Registre-se uma limitação. A carga efetiva não foi rigorosamente idêntica, pois
+o gerador foi configurado com paralelismo fixo e não com taxa de requisições
+controlada. Como o ambiente local dispunha de maior capacidade, emitiu mais
+requisições por unidade de tempo. A consequência aparece nos valores de
+utilização durante a fase de redução, de 382 por cento contra 183 por cento. As
+medidas de tempo permanecem válidas, uma vez que em ambos os casos a carga
+excedeu amplamente o alvo, porém a utilização absoluta não é diretamente
+comparável.
 
 ---
 
@@ -344,7 +476,35 @@ aws ec2 describe-instances --region us-east-1 \
 aws ec2 describe-volumes --region us-east-1 --query 'Volumes[].VolumeId'
 aws elb describe-load-balancers --region us-east-1 \
   --query 'LoadBalancerDescriptions[].LoadBalancerName'
+aws ec2 describe-addresses --region us-east-1 --query 'Addresses[].PublicIp'
+aws ec2 describe-nat-gateways --region us-east-1 \
+  --filter "Name=state,Values=available,pending" --query 'NatGateways[].NatGatewayId'
 aws iam list-roles --query "Roles[?contains(RoleName,'psi5120-tp1')].RoleName"
+aws logs describe-log-groups --region us-east-1 \
+  --log-group-name-prefix /aws/eks/psi5120-tp1 --query 'logGroups[].logGroupName'
+aws cloudformation describe-stacks --region us-east-1 --stack-name psi5120-tp1-vpc
+aws ec2 describe-vpcs --region us-east-1 \
+  --query 'Vpcs[].{Id:VpcId,Default:IsDefault,CIDR:CidrBlock}' --output table
 ```
 
-<!-- PREENCHER: confirmação de ausência de recursos -->
+Todas as consultas retornaram vazio, com duas exceções esperadas. A pilha de
+VPC respondeu como removida, e a listagem de VPCs apresentou apenas a rede
+padrão da região, criada pelo provedor e não pertencente a esta atividade.
+
+```
+CIDR             Default   Id
+172.31.0.0/16    True      vpc-04fc7cce43fc834e8
+```
+
+O custo residual da atividade é, portanto, nulo.
+
+Duas observações decorrem do procedimento de limpeza. A remoção do grupo de nós
+levou vários minutos, uma vez que envolve o esvaziamento dos Pods, o
+desregistro do nó no cluster e o encerramento da instância EC2. Durante esse
+intervalo, tentativas de remover o cluster resultam em `ResourceInUseException`,
+comportamento esperado e que exige aguardar a conclusão da etapa anterior.
+
+Além disso, a exclusão do cluster não remove a pilha de VPC nem as roles de
+identidade, criadas separadamente e sujeitas a remoção explícita. Recursos
+criados fora do ciclo de vida do cluster permanecem sob responsabilidade de quem
+os criou, ainda que tenham sido criados para servi-lo.
