@@ -21,7 +21,7 @@
 
 \address{Escola Politécnica -- Universidade de São Paulo (USP)\\
   PSI5120 -- Tópicos em Computação em Nuvem
-  \email{ricardo.ito@usp.br}
+  \email{rkai03@usp.br}
 }
 
 \begin{document}
@@ -44,12 +44,11 @@ locally against 35 seconds in the managed cluster.
 \begin{resumo}
 Este trabalho avalia o comportamento do Horizontal Pod Autoscaler (HPA) do
 Kubernetes em dois ambientes distintos, um cluster local em Minikube e um
-cluster gerenciado em Amazon EKS. A mesma imagem de contêiner, os mesmos
+cluster gerenciado em Amazon EKS. Foram utilizadas as mesmas imagens de contêiner, os mesmos
 manifestos e o mesmo perfil de carga foram aplicados aos dois, de modo que as
 diferenças observadas pudessem ser atribuídas à infraestrutura e não ao
 artefato executado. A instrumentação amostrou o estado do autoescalador a cada
-cinco segundos e registrou uma série temporal, o que permitiu medir o tempo de
-reação em vez de apenas constatá-lo. Os resultados mostram latência de detecção
+cinco segundos e registrou uma série temporal. Os resultados mostram latência de detecção
 praticamente idêntica, de 16 e 14 segundos, e diferença de duas vezes no tempo
 necessário para atingir o teto de réplicas, 74 segundos no ambiente local
 contra 35 segundos no gerenciado.
@@ -57,11 +56,9 @@ contra 35 segundos no gerenciado.
 
 \section{Introdução}
 
-A elasticidade é frequentemente apresentada como característica definidora da
+A elasticidade é uma característica definidora da
 computação em nuvem, entendida como a capacidade de ajustar recursos à demanda
-sem intervenção manual. Em plataformas de orquestração de contêineres, essa
-propriedade se materializa em mecanismos concretos, e o Horizontal Pod
-Autoscaler é o mais direto entre eles.
+sem intervenção manual.
 
 O HPA opera segundo o modelo de reconciliação que caracteriza o Kubernetes. O
 operador declara um estado desejado, expresso como faixa de réplicas e alvo de
@@ -74,9 +71,8 @@ r_{\text{desejadas}} = \left\lceil r_{\text{atuais}} \times
 \frac{u_{\text{atual}}}{u_{\text{alvo}}} \right\rceil
 \]
 onde $u$ representa a utilização média das réplicas.
-
-O denominador dessa razão merece atenção porque condiciona todo o mecanismo. A
-utilização não é medida em valor absoluto, e sim como proporção do recurso
+ 
+A utilização não é medida em valor absoluto, e sim como proporção do recurso
 declarado em \texttt{requests.cpu} no manifesto do contêiner. Se esse campo não
 estiver definido, não existe denominador, o controlador não consegue computar a
 métrica e o autoescalamento não ocorre, situação que se manifesta pela
@@ -104,18 +100,13 @@ externas, que expõe três pontos de acesso. Dois deles respondem imediatamente 
 servem de alvo às sondas de saúde do Kubernetes. O terceiro, denominado
 \texttt{/work}, consome processador de forma deliberada e controlada.
 
-A definição desse consumo envolve uma decisão metodológica relevante. A carga é
-especificada por \emph{tempo de processador} e não por número de iterações. Se
+A carga é especificada por \emph{tempo de processador} e não por número de iterações. Se
 fosse definida por iterações, um processador mais rápido concluiria o trabalho
-em menos tempo e consumiria menos CPU-segundos por requisição. Como os dois
-ambientes comparados possuem processadores distintos, parte da diferença
-observada no autoescalamento decorreria do equipamento e não do controlador,
-o que constituiria variável de confusão. Ao fixar o tempo de processador, cada
-requisição custa aproximadamente os mesmos CPU-segundos nos dois ambientes.
+em menos tempo e consumiria menos CPU-segundos por requisição. 
 
 A precisão do mecanismo foi verificada antes da publicação da imagem. Para um
 alvo de 200 milissegundos, o tempo efetivamente consumido foi de 200,34
-milissegundos, o que corresponde a erro de 0,17 por cento.
+milissegundos.
 
 \subsection{Empacotamento}
 
@@ -169,19 +160,11 @@ Metrics Server    & complemento habilitável & manifesto aplicado \\
 \end{tabular}
 \end{table}
 
-Duas diferenças merecem destaque por seus efeitos sobre os resultados. Os
+Duas diferenças merecem destaque. Os
 ambientes executam \emph{runtimes} distintos, e a criação de contêineres no
 ambiente gerenciado prescinde do daemon Docker como intermediário. Além disso,
 o nó local é ele próprio um contêiner executado sobre o núcleo do hospedeiro,
 ao passo que o nó gerenciado é uma máquina virtual com núcleo próprio.
-
-O tipo de instância adotado no ambiente gerenciado foi \texttt{c7i-flex.large}.
-A escolha decorre de restrição da conta utilizada, que opera em plano gratuito e
-admite somente tipos elegíveis. Tentativa anterior com \texttt{t3.medium},
-tipo de capacidade equivalente, resultou em falha de provisionamento com a
-mensagem \texttt{InvalidParameterCombination}. A diferença entre os dois tipos
-é de elegibilidade comercial e não de capacidade técnica, o que ilustra como
-restrições contratuais podem condicionar decisões de arquitetura.
 
 \section{Metodologia}
 
@@ -208,14 +191,6 @@ Deployment informa quantas já passaram na sonda de prontidão e portanto recebe
 tráfego. O intervalo entre as duas grandezas corresponde ao tempo de partida do
 contêiner e integra o tempo de reação percebido pelo usuário do serviço.
 
-\subsection{Detecção automática dos eventos}
-
-O instante de início da carga é determinado durante a análise como o primeiro
-momento em que a utilização observada ultrapassa o alvo configurado, e não por
-anotação manual do horário de aplicação do gerador. O critério é idêntico nos
-dois ambientes e elimina o erro humano de registro, que poderia ser da mesma
-ordem de grandeza das diferenças que se pretende medir.
-
 \subsection{Geração de carga}
 
 O gerador executa dentro do próprio cluster, sob a forma de Pod que mantém doze
@@ -229,22 +204,6 @@ a carga precisa saturar o processador das réplicas e não o enlace de rede.
 O gerador declara reservas e limites próprios de processador, de modo a não
 concorrer livremente com as réplicas, e não porta o rótulo utilizado pelo
 autoescalador, de forma que seu consumo não entra no cálculo da métrica.
-
-\subsection{Políticas de escalamento}
-
-As políticas de comportamento do autoescalador foram declaradas explicitamente
-no manifesto, ainda que sejam opcionais. A razão é metodológica, pois os dois
-clusters executam versões distintas do Kubernetes e valores padrão podem
-divergir entre versões, o que introduziria variável não controlada.
-
-Para aumento, a janela de estabilização foi definida como nula e a política
-autoriza o maior valor entre dobrar a quantidade de réplicas e acrescentar
-quatro réplicas a cada quinze segundos. Para redução, foi mantida a janela
-padrão de trezentos segundos.
-
-A assimetria entre as duas direções não constitui deficiência do controlador.
-Aumentar tardiamente degrada o serviço, ao passo que reduzir precocemente
-provoca oscilação de réplicas diante de variações transitórias de carga.
 
 \subsection{Procedimento}
 
@@ -279,6 +238,9 @@ Máximo de Pods pendentes                 & 0     & 0 \\
 \end{tabular}
 \end{table}
 
+As figuras a seguir apresentam um "gap" nos gráficos. Isso é decorrente da utilização de
+2 baterias de colheita de métricas, rodadas com um pequeno espaçamento antes da mudança de carga.
+
 \begin{figure}[ht]
 \centering
 \includegraphics[width=0.92\textwidth]{figuras/replicas.png}
@@ -296,11 +258,7 @@ Máximo de Pods pendentes                 & 0     & 0 \\
 \subsection{Latência de detecção}
 
 O intervalo entre o início da carga e a criação da primeira réplica adicional
-foi de 16 segundos no ambiente local e 14 segundos no gerenciado. A proximidade
-era esperada, uma vez que ambos dependem do mesmo ciclo de reconciliação de
-quinze segundos e do mesmo intervalo de coleta do Metrics Server. Os valores
-correspondem, na prática, a um único ciclo de controle, o que representa a
-menor latência possível para o mecanismo.
+foi de 16 segundos no ambiente local e 14 segundos no gerenciado.
 
 Esse resultado tem valor metodológico além do descritivo, pois indica que o
 controlador se comporta de maneira equivalente nos dois ambientes. As
@@ -311,10 +269,8 @@ infraestrutura subjacente.
 
 A diferença mais expressiva está no tempo necessário para sair de uma réplica e
 atingir dez, de 74 segundos no ambiente local contra 35 segundos no gerenciado.
-A razão entre os dois valores é próxima de dois.
 
-Como as políticas de escalamento foram declaradas de forma idêntica e a latência
-de detecção é equivalente, a diferença não decorre da decisão do controlador, e
+A diferença não decorre da decisão do controlador, e
 sim da velocidade com que cada ambiente materializa réplicas. Duas causas são
 plausíveis. O ambiente gerenciado utiliza \emph{containerd} diretamente,
 enquanto o local interpõe o daemon Docker na criação de contêineres. Além disso,
@@ -322,7 +278,7 @@ o armazenamento do nó gerenciado é um volume dedicado, ao passo que o nó loca
 compartilha o disco da estação de trabalho com o sistema operacional e demais
 processos.
 
-A observação tem consequência prática. Testes de autoescalamento conduzidos em
+Testes de autoescalamento conduzidos em
 ambiente local tendem a subestimar a velocidade de resposta obtida em produção,
 o que é conservador do ponto de vista de dimensionamento, porém pode induzir
 ajustes desnecessários nas políticas.
@@ -348,12 +304,7 @@ escassez de recursos.
 O intervalo entre o fim da carga e o início da redução foi de 303 segundos nos
 dois ambientes, contra os 300 segundos declarados na janela de estabilização.
 
-Esse resultado cumpre função de verificação. Um parâmetro de valor conhecido foi
-medido de forma independente, em dois ambientes distintos, e reproduziu o valor
-esperado com desvio de 1 por cento. A concordância sustenta a confiabilidade das
-demais grandezas obtidas pela mesma instrumentação.
-
-A magnitude do intervalo também é informativa. A redução leva aproximadamente
+A redução leva aproximadamente
 vinte vezes mais tempo para iniciar do que o aumento, assimetria que decorre
 diretamente das políticas configuradas e que corresponde ao comportamento
 recomendado para ambientes de produção.
@@ -373,13 +324,6 @@ a criação do cluster, e permaneceu ativo por período considerável antes que
 qualquer aplicação fosse implantada, em razão do tempo de provisionamento. A
 instância do grupo de nós é cobrada enquanto existir. O volume de armazenamento
 associado à instância segue a mesma lógica.
-
-Duas decisões de projeto reduziram o custo total. O modelo de rede adotado
-emprega apenas sub-redes públicas, o que dispensa a criação de \emph{NAT
-Gateway}, recurso cobrado por hora e por volume processado. Os registros do
-plano de controle foram mantidos desabilitados, evitando cobrança por ingestão
-e retenção. Ambas as escolhas reduzem, na mesma medida, a capacidade de
-diagnóstico disponível.
 
 Cabe registrar que a distinção decisiva não está no valor absoluto, e sim no
 regime de cobrança. O custo do ambiente gerenciado independe da existência de
