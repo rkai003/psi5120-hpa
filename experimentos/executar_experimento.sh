@@ -143,21 +143,83 @@ sleep "$DURACAO_CARGA"
 # caso o gargalo foi o proprio gerador e nao o sistema sob teste.
 # -----------------------------------------------------------------------------
 echo "[5/6] coletando relatorio do gerador"
-sleep 10
-kubectl logs gerador-rps -n "$NAMESPACE" 2>/dev/null | grep '"evento": "final"' > "$JSON_GERADOR" || true
+
+# -----------------------------------------------------------------------------
+# Espera pelo encerramento efetivo do Pod gerador.
+#
+# Um intervalo fixo seria insuficiente, uma vez que o instante de termino
+# depende do tempo de agendamento do Pod e do periodo em que o gerador aguarda
+# a conclusao das requisicoes pendentes antes de emitir o relatorio final. Ler
+# os registros antes disso retorna saida incompleta, sem a linha que informa a
+# aderencia a taxa alvo.
+#
+# A espera observa a fase do Pod e admite limite maximo, de modo que uma falha
+# do gerador nao interrompa a execucao da matriz.
+# -----------------------------------------------------------------------------
+for _ in $(seq 1 24); do
+    FASE=$(kubectl get pod gerador-rps -n "$NAMESPACE" \
+        -o jsonpath='{.status.phase}' 2>/dev/null)
+    case "$FASE" in
+        Succeeded|Failed) break ;;
+        "") break ;;
+    esac
+    sleep 5
+done
+[ "${FASE:-}" = "Running" ] && echo "       AVISO: gerador ainda em execucao apos o limite de espera"
+
+kubectl logs gerador-rps -n "$NAMESPACE" 2>/dev/null > "$JSON_GERADOR" || true
 
 if [ -s "$JSON_GERADOR" ]; then
     python3 - "$JSON_GERADOR" <<'PY'
 import json, sys
-try:
-    d = json.loads(open(sys.argv[1]).read().strip().splitlines()[-1])
-    ad = d.get("aderencia")
-    print(f"       taxa alvo {d.get('rps_alvo')} req/s, alcancada {d.get('rps_alcancado')} req/s")
-    print(f"       aderencia {ad}")
-    if ad is not None and ad < 0.95:
-        print("       AVISO: aderencia abaixo de 0,95. Execucao candidata a descarte.")
-except Exception as e:
-    print(f"       nao foi possivel interpretar o relatorio: {e}")
+
+# -----------------------------------------------------------------------------
+# Avaliacao da carga aplicada.
+#
+# A aderencia acumulada inclui a fase inicial, em que o servico opera com uma
+# unica replica e e incapaz de atender a taxa alvo por razao fisica. Avaliar a
+# validade da carga por esse valor levaria a descartar execucoes corretas.
+#
+# O criterio adotado e a aderencia em regime, calculada sobre a segunda metade
+# dos relatorios de progresso, quando o escalamento ja se completou. Valores
+# abaixo de 0,95 nesse periodo indicam que o gerador, e nao o sistema sob teste,
+# limitou a carga.
+# -----------------------------------------------------------------------------
+registros = []
+for linha in open(sys.argv[1]):
+    linha = linha.strip()
+    if not linha.startswith("{"):
+        continue
+    try:
+        registros.append(json.loads(linha))
+    except json.JSONDecodeError:
+        pass
+
+progresso = [r for r in registros if r.get("evento") in ("progresso", "final")]
+if not progresso:
+    print("       AVISO: nenhum relatorio de progresso obtido")
+    sys.exit(0)
+
+final = progresso[-1]
+print(f"       taxa alvo {final.get('rps_alvo')} req/s, "
+      f"acumulada {final.get('rps_acumulado')} req/s")
+
+metade = progresso[len(progresso) // 2:]
+janelas = [r.get("aderencia_janela") for r in metade
+           if r.get("aderencia_janela") is not None]
+
+if janelas:
+    regime = sum(janelas) / len(janelas)
+    print(f"       aderencia em regime {regime:.3f} "
+          f"(media de {len(janelas)} janelas)")
+    if regime < 0.95:
+        print("       AVISO: gerador nao sustentou a carga. Candidata a descarte.")
+else:
+    ac = final.get("aderencia_acumulada")
+    print(f"       aderencia acumulada {ac} (sem janelas suficientes)")
+
+print(f"       latencia p50 {final.get('latencia_p50_ms')} ms, "
+      f"p95 {final.get('latencia_p95_ms')} ms")
 PY
 else
     echo "       AVISO: relatorio do gerador nao obtido"

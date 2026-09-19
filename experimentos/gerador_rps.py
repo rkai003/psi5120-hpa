@@ -6,7 +6,9 @@ Gerador de carga calibrado por taxa de requisicoes.
 MOTIVACAO
 O gerador empregado no trabalho intermediario mantinha um numero fixo de lacos
 de requisicao, cada um disparando a proxima chamada somente apos receber a
-resposta da anterior.
+resposta da anterior. Esse arranjo, conhecido como malha fechada, faz com que a
+taxa efetiva dependa da latencia do servidor e da capacidade de processamento
+do proprio gerador.
 
 A consequencia foi observada experimentalmente: o ambiente local, dotado de
 maior capacidade, emitiu mais requisicoes por unidade de tempo que o ambiente
@@ -16,7 +18,8 @@ essa grandeza entre os ambientes.
 
 Este gerador opera em malha aberta. As requisicoes sao agendadas em intervalos
 fixos determinados pela taxa alvo, independentemente de respostas pendentes. A
-carga oferecida passa a ser uma variavel controlada do experimento.
+carga oferecida passa a ser uma variavel controlada do experimento, e nao um
+resultado da interacao entre cliente e servidor.
 
 CARGA OFERECIDA EM UNIDADES INDEPENDENTES DO AMBIENTE
 Como o endpoint de destino consome um tempo de processador conhecido por
@@ -123,12 +126,20 @@ def trabalhador(fila: queue.Queue, url: str, contadores: Contadores,
 
 
 def relatar(contadores: Contadores, decorrido: float, rps_alvo: float,
-            custo_ms: float, final: bool = False) -> None:
+            custo_ms: float, estado: dict, final: bool = False) -> None:
     """
     Emite uma linha de relatorio em JSON na saida padrao.
 
     O formato estruturado permite que os registros sejam recuperados por
     kubectl logs e processados sem analise textual.
+
+    Alem das grandezas acumuladas desde o inicio, o relatorio informa a taxa
+    observada apenas no intervalo desde o relatorio anterior. A distincao e
+    necessaria porque o experimento parte de uma unica replica, incapaz de
+    atender a taxa alvo. Durante o crescimento o sistema opera saturado e a
+    taxa acumulada fica abaixo do alvo por razao fisica, e nao por limitacao do
+    gerador. A aderencia relevante para validar a carga e a observada em
+    regime, apos a conclusao do escalamento.
     """
     s = contadores.instantaneo()
     lat = s["latencias"]
@@ -139,19 +150,28 @@ def relatar(contadores: Contadores, decorrido: float, rps_alvo: float,
         k = max(0, min(len(lat) - 1, int(round(p / 100.0 * (len(lat) - 1)))))
         return round(lat[k], 1)
 
-    rps_alcancado = s["concluidas"] / decorrido if decorrido > 0 else 0.0
+    rps_acumulado = s["concluidas"] / decorrido if decorrido > 0 else 0.0
+
+    # Taxa no intervalo desde o relatorio anterior.
+    delta_t = decorrido - estado.get("t_anterior", 0.0)
+    delta_n = s["concluidas"] - estado.get("n_anterior", 0)
+    rps_janela = delta_n / delta_t if delta_t > 0 else 0.0
+    estado["t_anterior"] = decorrido
+    estado["n_anterior"] = s["concluidas"]
 
     registro = {
         "evento": "final" if final else "progresso",
         "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "decorrido_s": round(decorrido, 1),
         "rps_alvo": rps_alvo,
-        "rps_alcancado": round(rps_alcancado, 2),
-        # Fracao da taxa alvo efetivamente atingida. Valores abaixo de 0,95
-        # indicam que o gerador nao sustentou a carga pretendida.
-        "aderencia": round(rps_alcancado / rps_alvo, 3) if rps_alvo else None,
+        "rps_acumulado": round(rps_acumulado, 2),
+        "rps_janela": round(rps_janela, 2),
+        # Aderencia acumulada desde o inicio, incluindo a fase de saturacao.
+        "aderencia_acumulada": round(rps_acumulado / rps_alvo, 3) if rps_alvo else None,
+        # Aderencia no intervalo recente, usada para validar a carga em regime.
+        "aderencia_janela": round(rps_janela / rps_alvo, 3) if rps_alvo else None,
         "nucleos_oferecidos": round(rps_alvo * custo_ms / 1000.0, 3),
-        "nucleos_efetivos": round(rps_alcancado * custo_ms / 1000.0, 3),
+        "nucleos_efetivos_janela": round(rps_janela * custo_ms / 1000.0, 3),
         "enviadas": s["enviadas"],
         "concluidas": s["concluidas"],
         "falhas": s["falhas"],
@@ -233,6 +253,8 @@ def main() -> None:
     inicio = time.perf_counter()
     proximo_relatorio = args.intervalo_relatorio
     i = 0
+    # Estado usado para calcular a taxa no intervalo entre relatorios.
+    estado = {"t_anterior": 0.0, "n_anterior": 0}
 
     while True:
         decorrido = time.perf_counter() - inicio
@@ -255,7 +277,7 @@ def main() -> None:
         i += 1
 
         if decorrido >= proximo_relatorio:
-            relatar(contadores, decorrido, args.rps, args.custo_ms)
+            relatar(contadores, decorrido, args.rps, args.custo_ms, estado)
             proximo_relatorio += args.intervalo_relatorio
 
     # Aguarda as requisicoes pendentes por um intervalo limitado.
@@ -264,7 +286,7 @@ def main() -> None:
         time.sleep(0.2)
 
     encerrar.set()
-    relatar(contadores, time.perf_counter() - inicio, args.rps, args.custo_ms, final=True)
+    relatar(contadores, time.perf_counter() - inicio, args.rps, args.custo_ms, estado, final=True)
 
 
 if __name__ == "__main__":
