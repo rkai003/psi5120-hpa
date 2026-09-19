@@ -1,0 +1,105 @@
+# =============================================================================
+# Gerador de carga calibrado por taxa de requisicoes.
+#
+# Substitui o gerador empregado no trabalho intermediario, que mantinha um
+# numero fixo de lacos em malha fechada e cuja taxa efetiva dependia da
+# capacidade do ambiente.
+#
+# DISTRIBUICAO DO CODIGO
+# O script e disponibilizado ao Pod por meio de um ConfigMap montado como
+# arquivo, e nao embutido em uma imagem propria. A escolha evita a construcao e
+# a publicacao de um segundo artefato, e permite alterar o gerador sem
+# reconstruir imagem alguma. O ConfigMap e criado a partir do arquivo fonte com
+#
+#     kubectl create configmap gerador-rps -n hpa-demo \
+#       --from-file=gerador_rps.py=experimentos/gerador_rps.py
+#
+# de modo que o arquivo versionado no repositorio permanece a unica fonte.
+#
+# PARAMETROS DO EXPERIMENTO
+# A taxa alvo e a duracao sao definidas por variavel de ambiente, o que permite
+# que o orquestrador aplique diferentes pontos da matriz experimental sem
+# alterar este manifesto.
+# =============================================================================
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gerador-rps
+  namespace: hpa-demo
+  labels:
+    # Rotulo distinto do utilizado pela aplicacao. O gerador nao deve ser
+    # contabilizado pelo autoescalador nem receber trafego do Service.
+    app: gerador-rps
+spec:
+  # O gerador encerra por conta propria ao fim da duracao configurada. A
+  # politica Never impede que o Kubernetes o reinicie e inicie nova rodada de
+  # carga sem que o experimento tenha solicitado.
+  restartPolicy: Never
+
+  containers:
+    - name: gerador
+      # Mesma imagem base da aplicacao, o que dispensa download adicional no no
+      # e reduz o intervalo entre a criacao do Pod e o inicio efetivo da carga.
+      image: python:3.12-slim
+      imagePullPolicy: IfNotPresent
+
+      # -----------------------------------------------------------------------
+      # Recursos do gerador.
+      #
+      # O dimensionamento e mais generoso que o do gerador anterior porque a
+      # emissao em malha aberta exige manter threads e conexoes simultaneas.
+      # Um gerador subdimensionado deixaria de sustentar a taxa alvo, o que
+      # seria detectado pela metrica de aderencia, porem invalidaria a execucao.
+      #
+      # O consumo do gerador nao entra no calculo do autoescalador, uma vez que
+      # o Pod nao porta o rotulo observado pelo seletor do HPA.
+      # -----------------------------------------------------------------------
+      resources:
+        requests:
+          cpu: 200m
+          memory: 128Mi
+        limits:
+          cpu: 1000m
+          memory: 512Mi
+
+      env:
+        # Endereco do endpoint de carga, resolvido pelo DNS interno do cluster.
+        # O parametro ms define o custo de processador de cada requisicao e deve
+        # permanecer coerente com CUSTO_MS, usado no calculo de nucleos.
+        - name: ALVO_URL
+          value: "http://web-svc.hpa-demo.svc.cluster.local/work?ms=50"
+
+        # Taxa alvo em requisicoes por segundo. Com custo de 50 ms por
+        # requisicao, 40 requisicoes por segundo correspondem a 2 nucleos de
+        # carga oferecida. O orquestrador sobrescreve este valor a cada ponto
+        # da matriz experimental.
+        - name: TAXA_RPS
+          value: "40"
+
+        - name: DURACAO_S
+          value: "300"
+
+        # Custo declarado por requisicao, em milissegundos de processador.
+        # Serve para converter a taxa em nucleos oferecidos nos relatorios.
+        - name: CUSTO_MS
+          value: "50"
+
+        # Zero delega ao gerador o calculo do numero de threads emissoras.
+        - name: TRABALHADORES
+          value: "0"
+
+      command: ["python3", "/gerador/gerador_rps.py"]
+
+      volumeMounts:
+        - name: script
+          mountPath: /gerador
+          readOnly: true
+
+  volumes:
+    - name: script
+      configMap:
+        name: gerador-rps
+        # O modo permite leitura e execucao. O script e invocado pelo
+        # interpretador, de modo que a permissao de execucao nao e
+        # estritamente necessaria, porem mantem o comportamento previsivel.
+        defaultMode: 0555
