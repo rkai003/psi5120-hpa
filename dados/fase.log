@@ -1,0 +1,275 @@
+nohup: ignoring input
+############################################################
+# Caracterizacao do atraso de deteccao
+#   repeticoes         12
+#   resolucao suposta  60s
+#   fatores fixos      40 req/s, alvo 50%, janela 300s
+############################################################
+
+--- execucao 1/12, atraso de fase 48s (pre-carga 78s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r1
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 213s
+       registrando linha de base por 78s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.66 req/s
+       aderencia em regime 1.195 (media de 5 janelas)
+       latencia p50 116.1 ms, p95 4414.1 ms
+[6/6] observando reducao por 45s
+Concluido. 41 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r1.csv
+
+
+--- execucao 2/12, atraso de fase 1s (pre-carga 31s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r2
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 166s
+       registrando linha de base por 31s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.997 (media de 5 janelas)
+       latencia p50 65.2 ms, p95 125.0 ms
+[6/6] observando reducao por 45s
+Concluido. 32 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r2.csv
+
+
+--- execucao 3/12, atraso de fase 37s (pre-carga 67s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r3
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 202s
+       registrando linha de base por 67s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.997 (media de 5 janelas)
+       latencia p50 67.2 ms, p95 108.0 ms
+[6/6] observando reducao por 45s
+Concluido. 39 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r3.csv
+
+
+--- execucao 4/12, atraso de fase 5s (pre-carga 35s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r4
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 170s
+       registrando linha de base por 35s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.998 (media de 5 janelas)
+       latencia p50 83.7 ms, p95 156.3 ms
+[6/6] observando reducao por 45s
+Concluido. 33 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r4.csv
+
+
+--- execucao 5/12, atraso de fase 31s (pre-carga 61s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r5
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 196s
+       registrando linha de base por 61s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.997 (media de 5 janelas)
+       latencia p50 70.1 ms, p95 139.3 ms
+[6/6] observando reducao por 45s
+Concluido. 38 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r5.csv
+
+
+--- execucao 6/12, atraso de fase 32s (pre-carga 62s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r6
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 197s
+       registrando linha de base por 62s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.997 (media de 5 janelas)
+       latencia p50 72.4 ms, p95 138.4 ms
+[6/6] observando reducao por 45s
+Concluido. 38 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r6.csv
+
+
+--- execucao 7/12, atraso de fase 47s (pre-carga 77s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r7
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 212s
+       registrando linha de base por 77s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.997 (media de 5 janelas)
+       latencia p50 77.3 ms, p95 171.7 ms
+[6/6] observando reducao por 45s
+Concluido. 41 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r7.csv
+
+
+--- execucao 8/12, atraso de fase 49s (pre-carga 79s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r8
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 214s
+       registrando linha de base por 79s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.997 (media de 5 janelas)
+       latencia p50 77.5 ms, p95 155.4 ms
+[6/6] observando reducao por 45s
+Concluido. 41 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r8.csv
+
+
+--- execucao 9/12, atraso de fase 36s (pre-carga 66s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r9
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 201s
+       registrando linha de base por 66s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.998 (media de 5 janelas)
+       latencia p50 66.1 ms, p95 127.1 ms
+[6/6] observando reducao por 45s
+Concluido. 38 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r9.csv
+
+
+--- execucao 10/12, atraso de fase 36s (pre-carga 66s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r10
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 201s
+       registrando linha de base por 66s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.997 (media de 5 janelas)
+       latencia p50 72.3 ms, p95 152.3 ms
+[6/6] observando reducao por 45s
+Concluido. 39 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r10.csv
+
+
+--- execucao 11/12, atraso de fase 48s (pre-carga 78s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r11
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 213s
+       registrando linha de base por 78s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.998 (media de 5 janelas)
+       latencia p50 64.3 ms, p95 123.2 ms
+[6/6] observando reducao por 45s
+Concluido. 41 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r11.csv
+
+
+--- execucao 12/12, atraso de fase 40s (pre-carga 70s)
+============================================================
+Ponto experimental: exp_minikube-fase_rps40_alvo50_jan300_r12
+  taxa alvo            40 req/s
+  carga oferecida      2.00 nucleos
+  alvo de utilizacao   50%
+  janela de reducao    300s
+============================================================
+[1/6] restaurando estado inicial
+[2/6] aplicando HPA com alvo=50% e janela=300s
+       aguardando metrica ficar disponivel
+[3/6] iniciando coleta por 205s
+       registrando linha de base por 70s
+[4/6] aplicando carga de 40 req/s por 90s
+[5/6] coletando relatorio do gerador
+       taxa alvo 40.0 req/s, acumulada 39.92 req/s
+       aderencia em regime 0.998 (media de 5 janelas)
+       latencia p50 74.5 ms, p95 143.0 ms
+[6/6] observando reducao por 45s
+Concluido. 39 amostras em /home/rkai03/psi5120/tp1/dados/exp_minikube-fase_rps40_alvo50_jan300_r12.csv
+
+
+############################################################
+# Concluido. Execucoes gravadas com o rotulo minikube-fase
+############################################################
