@@ -1,0 +1,12 @@
+{
+  "ponto": "exp_minikube-fase_rps40_alvo50_jan300_r11",
+  "ambiente": "minikube-fase",
+  "rps": 40,
+  "alvo_cpu": 50,
+  "janela_reducao": 300,
+  "repeticao": 11,
+  "carga_inicio_utc": "2026-09-20T13:27:22Z",
+  "carga_fim_utc": "2026-09-20T13:28:52Z",
+  "fase_imposta_s": 48,
+  "resolucao_suposta_s": 60
+}
