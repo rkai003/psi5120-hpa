@@ -133,7 +133,24 @@ sed -e "s/value: \"40\"/value: \"${RPS}\"/" \
 kubectl apply -f "$TMP_GER" >/dev/null
 rm -f "$TMP_GER"
 
+# -----------------------------------------------------------------------------
+# Marcacao do instante real de inicio da carga.
+#
+# A versao anterior da analise inferia esse instante a partir do momento em que
+# a utilizacao registrada pelo HPA ultrapassava o alvo. Como esse campo e
+# atualizado apenas a cada ciclo de reconciliacao, a referencia temporal ficava
+# deslocada em ate um ciclo, e o tempo de reacao calculado media o intervalo
+# entre dois campos da mesma fonte defasada em vez do intervalo desde a
+# aplicacao efetiva da carga.
+#
+# O instante e agora registrado em arquivo proprio, a partir do relogio do
+# operador, no mesmo formato usado pela coleta. A analise passa a usar esse
+# valor como referencia.
+# -----------------------------------------------------------------------------
+T_CARGA_INICIO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
 sleep "$DURACAO_CARGA"
+T_CARGA_FIM=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # -----------------------------------------------------------------------------
 # Etapa 5. Coleta do relatorio do gerador e remocao da carga.
@@ -232,6 +249,21 @@ kubectl delete pod gerador-rps -n "$NAMESPACE" --ignore-not-found --wait=false >
 # -----------------------------------------------------------------------------
 echo "[6/6] observando reducao por ${POS_CARGA}s"
 wait "$PID_COLETA" 2>/dev/null || true
+
+# Registro dos marcadores temporais de referencia, usados pela analise em
+# substituicao a inferencia por limiar de utilizacao.
+cat > "${RAIZ}/dados/${BASE}_marcadores.json" <<JSON
+{
+  "ponto": "${BASE}",
+  "ambiente": "${ROTULO}",
+  "rps": ${RPS},
+  "alvo_cpu": ${ALVO_CPU},
+  "janela_reducao": ${JANELA},
+  "repeticao": ${REPETICAO},
+  "carga_inicio_utc": "${T_CARGA_INICIO}",
+  "carga_fim_utc": "${T_CARGA_FIM}"
+}
+JSON
 
 AMOSTRAS=$(( $(wc -l < "$CSV") - 1 ))
 echo "Concluido. ${AMOSTRAS} amostras em ${CSV}"

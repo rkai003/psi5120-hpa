@@ -104,17 +104,52 @@ varredura_c() {
     done
 }
 
+# -----------------------------------------------------------------------------
+# Varredura D. Sensibilidade a resolucao do pipeline de metricas.
+#
+# Investigacao preliminar indicou que o intervalo entre a aplicacao da carga e a
+# primeira decisao do autoescalador e dominado pelo tempo que a metrica leva
+# para tornar-se visivel, e nao pelo ciclo de reconciliacao do controlador. O
+# Metrics Server calcula utilizacao a partir de contadores cumulativos e exige
+# duas amostras consecutivas, de modo que a resolucao de coleta impoe um piso ao
+# tempo de reacao.
+#
+# Esta varredura mede essa contribuicao diretamente. O rotulo do ambiente
+# incorpora a resolucao empregada, de forma que a analise possa agrupar as
+# execucoes sem alterar a convencao de nomes dos arquivos.
+#
+# Ao final, a resolucao e restaurada ao valor originalmente instalado pelo
+# complemento, evitando que execucoes posteriores herdem configuracao alterada.
+# -----------------------------------------------------------------------------
+varredura_d() {
+    registrar_cabecalho "Varredura D: resolucao do pipeline de metricas"
+    local resolucao_original="60s"
+
+    for res in 15 30 60; do
+        "${RAIZ}/experimentos/definir_resolucao_metricas.sh" "${res}s"
+        for r in $(seq 1 "$REPETICOES"); do
+            DURACAO_CARGA=240 POS_CARGA=120 \
+                "$EXEC" "${ROTULO}-res${res}" "$REF_RPS" "$REF_ALVO" "$REF_JANELA" "$r"
+        done
+    done
+
+    echo "Restaurando resolucao original (${resolucao_original})"
+    "${RAIZ}/experimentos/definir_resolucao_metricas.sh" "$resolucao_original"
+}
+
 case "$VARREDURA" in
     A) varredura_a ;;
     B) varredura_b ;;
     C) varredura_c ;;
+    D) varredura_d ;;
     TODAS)
         varredura_a
         varredura_b
         varredura_c
+        varredura_d
         ;;
     *)
-        echo "varredura desconhecida: ${VARREDURA}. Use A, B, C ou TODAS."
+        echo "varredura desconhecida: ${VARREDURA}. Use A, B, C, D ou TODAS."
         exit 1
         ;;
 esac
