@@ -1,0 +1,10 @@
+{
+  "ponto": "exp_minikube_rps80_alvo50_jan300_r3",
+  "ambiente": "minikube",
+  "rps": 80,
+  "alvo_cpu": 50,
+  "janela_reducao": 300,
+  "repeticao": 3,
+  "carga_inicio_utc": "2026-09-20T05:27:44Z",
+  "carga_fim_utc": "2026-09-20T05:31:44Z"
+}
