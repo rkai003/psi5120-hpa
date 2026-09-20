@@ -406,6 +406,13 @@ def main() -> None:
     ]:
         grupos = {}
         for e in execucoes:
+            # Execucoes da varredura de resolucao operam com o pipeline de
+            # metricas alterado e nao podem integrar as demais varreduras, ainda
+            # que compartilhem os valores de referencia dos fatores do HPA.
+            # Inclui-las misturaria condicoes distintas na mesma coluna e
+            # inflaria artificialmente o desvio observado.
+            if e.get("resolucao") is not None:
+                continue
             # Seleciona apenas execucoes em que os demais fatores estao no
             # valor de referencia, isolando o efeito do fator sob estudo.
             if all(e[f] == REF[f] for f in fixos):
